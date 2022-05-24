@@ -1,0 +1,193 @@
+# Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
+version: 2.1
+# Use a package of configuration called an orb.
+orbs:
+  # Declare a dependency on the welcome-orb
+  #python: circleci/python@1.4.0
+  aws-cli: circleci/aws-cli@2.0.3
+
+references:
+  default_container_config: &default_container_config
+    docker:
+      - image: circleci/node:10
+    working_directory: ~/repo
+    environment:
+      NODE_OPTIONS: --max-old-space-size=3500
+
+  filters_ignore_all_envs: &filters_ignore_all_envs
+    filters:
+      branches:
+        ignore:
+          - dev
+          - /dev-.*/
+          - homolog
+          - /homolog-.*/
+          - master
+          - /master-.*/
+    requires:
+      - test-lint
+      - build
+      - test-unittest
+
+  filters_only_dev: &filters_only_dev
+    filters:
+      branches:
+        only:
+          - dev
+          - /dev-.*/
+    requires:
+      - test-lint
+      - build
+      - test-unittest
+
+  filters_only_homolog: &filters_only_homolog
+    filters:
+      branches:
+        only:
+          - homolog
+          - /homolog-.*/
+    requires:
+      - test-lint
+      - build
+      - test-unittest
+
+  filters_only_prd: &filters_only_prd
+    filters:
+      branches:
+        only:
+          - master
+          - /master-.*/
+    requires:
+      - test-lint
+      - build      
+      - test-unittest
+
+commands:
+  install_and_cache_dependencies:
+    description: "Checkout, Get Cache, Install, Save Cache"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v2-dependencies-{{ checksum "package-lock.json" }}
+      - run:
+          name: "Install Dependencies"
+          command: npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v2-dependencies-{{ checksum "package-lock.json" }}
+  build_code:
+    description: "Build Code"
+    steps:
+      - run:
+          name: "Build"
+          command: npm run-script build 2>/dev/null 
+# Precisa assumir a role para fazer deploy em prod
+  set_aws_environment:
+    description: "Assume some AWS Credentials"         
+    steps:      
+      - run:
+          name: Get values of environment variables
+          command: |
+            echo "export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $BASH_ENV
+            echo "export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $BASH_ENV 
+            echo "export AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" >> $BASH_ENV
+
+            source $BASH_ENV
+
+jobs:
+  build:
+    <<: *default_container_config
+    steps:
+      - install_and_cache_dependencies
+      - run:
+          name: "Show Current Branch"
+          command: echo ${CIRCLE_BRANCH}
+      - build_code
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  test-unittest:
+    <<: *default_container_config
+    steps:
+      - install_and_cache_dependencies
+      - run:
+          name: "Run Unit Tests"
+          command: npm run-script test
+      - store_test_results:
+          path: tests-report
+
+  test-lint:
+    <<: *default_container_config
+    steps:
+      - install_and_cache_dependencies
+      - run:
+          name: "Run Lint Tests"
+          command: npm run-script lint
+      - store_test_results:
+          path: tests-report
+
+  deploy:
+    <<: *default_container_config
+    parameters:
+      env:
+        description: AWS env to Deploy
+        type: string
+        default: "dev"
+    docker:
+      - image: circleci/python:3.7-node
+    working_directory: ~/repo          
+    steps:
+      - install_and_cache_dependencies
+      - attach_workspace:
+          at: .              
+      - aws-cli/install
+      - aws-cli/setup:
+          profile-name: $AWS_CLI_PROFILE_NAME
+      - set_aws_environment        
+      - run:
+          name: "Deploy with Serverless Framework"
+          command: npm run-script deploy:<<parameters.env>>
+          no_output_timeout: 1h
+
+# Orchestrate or schedule a set of jobs
+workflows:
+  flow-lint-build-test-deploy:
+    jobs:
+# ============================== Lint    
+      - test-lint:
+          name: test-lint
+# ============================== Build          
+      - build:
+          name: build
+          requires:
+            - test-lint 
+# ============================== Tests Unitários
+      - test-unittest:
+          name: test-unittest
+          requires:
+            - build    
+
+# ============================== Deploy 
+# TODO Descomentar quando configurar a role
+      - deploy: #dev
+          <<: *filters_only_dev
+          name: deploy-dev
+          env: dev
+          
+      - deploy: #homolog
+          <<: *filters_only_homolog
+          name: deploy-homolog
+          env: homolog
+          requires: 
+            - test-unittest
+
+      - deploy: #prd
+          <<: *filters_only_prd
+          name: deploy-prd
+          env: prd
+          requires: 
+            - test-unittest

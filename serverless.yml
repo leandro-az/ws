@@ -1,0 +1,554 @@
+service: ws-back
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  profile: ${opt:profile,"rich"}
+  timeout: 29
+  versionFunctions: false
+  apiGateway:
+    binaryMediaTypes:
+      - multipart/form-data
+  # se for passado algum parâmetro de stage pega o valor , caso contrário subirá em dev
+  stage: ${opt:stage,"dev"}
+  # fiz isso pq em dsv esta em virgínia e em prod esta na inglaterra
+  region: ${self:custom.region.${self:provider.stage}.name}
+  deploymentBucket:
+    name: ws-serverless-deployment-${self:provider.stage}
+  environment:
+    region: !Ref "AWS::Region"  
+    postgres_conn_host: ${ssm:/${self:custom.ssm}/database/postgreshost~true}
+    postgres_conn_database: ${ssm:/${self:custom.ssm}/database/postgresdatabase~true}
+    postgres_conn_username: ${ssm:/${self:custom.ssm}/database/postgresusername~true}
+    postgres_conn_password: ${ssm:/${self:custom.ssm}/database/postgrespassword~true}
+    authentication_key: ${ssm:/${self:custom.ssm}/crypto/authentication_key~true}
+    authentication_salt: ${ssm:/${self:custom.ssm}/crypto/authentication_salt~true}
+    jwt_secret: ${ssm:/${self:custom.ssm}/crypto/jwt_secret~true}
+  iamRoleStatements:
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "ssm:GetParameter"        
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "kms:Decrypt"     
+        - "kms:GenerateDataKey"        
+    - Effect: "Allow"
+      Resource: "*"
+      Action:
+        - "lambda:InvokeFunction"          
+
+custom: 
+  base: ${self:service}-${self:provider.stage}
+  brand: richness
+  project: workout
+  application: schedule
+  ssm: ${self:custom.project}/${self:provider.stage}
+  awsSubnetIds:
+    dev: # VPC-Default Private subnets
+      - XXXXXXXXXX
+      - YYYYYYYYYY
+    prd:
+      - XXXXXXXXXX
+      - YYYYYYYYYY
+  awsSecurityGroupId:
+    dev: !ImportValue database-security-group-RDSSecurityGroupGroupId
+    prd: !ImportValue database-security-group-RDSSecurityGroupGroupId 
+  region:
+    dev: 
+      name: us-east-1
+    prd: 
+      name: us-east-1
+
+reference:
+  defaultVpcConfig: &defaultVpcConfig
+    vpc:
+      securityGroupIds:
+        - ${self:custom.awsSecurityGroupId.${self:provider.stage}}
+      subnetIds: ${self:custom.awsSubnetIds.${self:provider.stage}}
+
+  defaultPrivateFunction: &defaultPrivateFunction
+    <<: *defaultVpcConfig
+
+  excludeAll: &allFiles
+    - '*'
+    - '**/**'
+
+package:
+  individually: true
+  excludeDevDependencies: false
+  exclude: 
+    - ".*/**"
+    - node_modules/**
+    - dist/*
+
+functions:     
+  helloWordWorkout:
+    <<: *defaultPrivateFunction
+    description: 'First test'
+    name: ${self:custom.base}-${self:custom.brand}-helloWordWorkout
+    handler: ./dist/test.helloWord
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/test.js
+        - ./dist/test.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/hello
+          method: GET          
+    
+  findAllClass:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Classes'
+    name: ${self:custom.base}-${self:custom.brand}-findAllClass
+    handler: ./dist/class.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/class.js
+        - ./dist/class.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/class
+          method: GET
+  
+  findAllConfig:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Configurations'
+    name: ${self:custom.base}-${self:custom.brand}-findAllConfig
+    handler: ./dist/config.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/config.js
+        - ./dist/config.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/config
+          method: GET
+
+  findAllDiscipline:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Disciplines'
+    name: ${self:custom.base}-${self:custom.brand}-findAllDiscipline
+    handler: ./dist/discipline.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/discipline.js
+        - ./dist/discipline.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/discipline
+          method: GET
+
+  findAllEvaluation:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Evaluations'
+    name: ${self:custom.base}-${self:custom.brand}-findAllEvaluation
+    handler: ./dist/evaluation.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/evaluation.js
+        - ./dist/evaluation.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/evaluation
+          method: GET
+  
+  findAllHistoricalAudit:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Historical Audit'
+    name: ${self:custom.base}-${self:custom.brand}-findAllHistoricalAudit
+    handler: ./dist/historicalAudit.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/historicalAudit.js
+        - ./dist/historicalAudit.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/findAllHistoricalAudit
+          method: GET
+
+  createOneHistoricalAudit:
+    <<: *defaultPrivateFunction
+    description: 'Create HistoricalAudit'
+    name: ${self:custom.base}-${self:custom.brand}-createOneHistoricalAudit
+    handler: ./dist/historicalAudit.createOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/historicalAudit.js
+        - ./dist/historicalAudit.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/createOneHistoricalAudit
+          method: GET  
+
+  deleteOneHistoricalAudit:
+    <<: *defaultPrivateFunction
+    description: 'Delete User'
+    name: ${self:custom.base}-${self:custom.brand}-deleteOneHistoricalAudit
+    handler: ./dist/historicalAudit.deleteOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/historicalAudit.js
+        - ./dist/historicalAudit.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/deleteOneHistoricalAudit
+          method: GET
+
+  updateOneHistoricalAudit:
+    <<: *defaultPrivateFunction
+    description: 'Update HistoricalAudit'
+    name: ${self:custom.base}-${self:custom.brand}-updateOneHistoricalAudit
+    handler: ./dist/historicalAudit.updateOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/historicalAudit.js
+        - ./dist/historicalAudit.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/updateOneHistoricalAudit
+          method: GET        
+
+  findAllPayment:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Payments'
+    name: ${self:custom.base}-${self:custom.brand}-findAllPayment
+    handler: ./dist/payment.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/payment.js
+        - ./dist/payment.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/findAllPayment
+          method: GET
+
+  createOnePayment:
+    <<: *defaultPrivateFunction
+    description: 'Create Payment'
+    name: ${self:custom.base}-${self:custom.brand}-createOnePayment
+    handler: ./dist/payment.createOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/payment.js
+        - ./dist/payment.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/createOnePayment
+          method: GET  
+
+  deleteOnePayment:
+    <<: *defaultPrivateFunction
+    description: 'Delete payment'
+    name: ${self:custom.base}-${self:custom.brand}-deleteOnePayment
+    handler: ./dist/payment.deleteOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/payment.js
+        - ./dist/payment.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/deleteOnePayment
+          method: GET
+
+  updateOnePayment:
+    <<: *defaultPrivateFunction
+    description: 'Update Payment'
+    name: ${self:custom.base}-${self:custom.brand}-updateOnePayment
+    handler: ./dist/payment.updateOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/payment.js
+        - ./dist/payment.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/updateOnePayment
+          method: GET                
+  
+  findAllPermission:
+    <<: *defaultPrivateFunction
+    description: 'GetAll permissions'
+    name: ${self:custom.base}-${self:custom.brand}-findAllPermission
+    handler: ./dist/permission.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/permission.js
+        - ./dist/permission.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/findAllPermission
+          method: GET
+
+  createOnePermission:
+    <<: *defaultPrivateFunction
+    description: 'Create Permission'
+    name: ${self:custom.base}-${self:custom.brand}-createOnePermission
+    handler: ./dist/permission.createOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/permission.js
+        - ./dist/permission.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/createOnePermission
+          method: GET  
+
+  deleteOnePermission:
+    <<: *defaultPrivateFunction
+    description: 'Delete Permission'
+    name: ${self:custom.base}-${self:custom.brand}-deleteOnePermission
+    handler: ./dist/permission.deleteOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/permission.js
+        - ./dist/permission.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/deleteOnePermission
+          method: GET
+
+  updateOnePermission:
+    <<: *defaultPrivateFunction
+    description: 'Update Permission'
+    name: ${self:custom.base}-${self:custom.brand}-updateOnePermission
+    handler: ./dist/permission.updateOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/permission.js
+        - ./dist/permission.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/updateOnePermission
+          method: GET        
+  
+  findAllPerson:
+    <<: *defaultPrivateFunction
+    description: 'GetAll People'
+    name: ${self:custom.base}-${self:custom.brand}-findAllPerson
+    handler: ./dist/person.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/person.js
+        - ./dist/person.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/findAllPerson
+          method: GET
+
+  createOnePerson:
+    <<: *defaultPrivateFunction
+    description: 'Create Person'
+    name: ${self:custom.base}-${self:custom.brand}-createOnePerson
+    handler: ./dist/person.createOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/person.js
+        - ./dist/person.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/createOnePerson
+          method: GET  
+
+  deleteOnePerson:
+    <<: *defaultPrivateFunction
+    description: 'Delete Person'
+    name: ${self:custom.base}-${self:custom.brand}-deleteOnePerson
+    handler: ./dist/person.deleteOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/person.js
+        - ./dist/person.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/deleteOnePerson
+          method: GET
+
+  updateOnePerson:
+    <<: *defaultPrivateFunction
+    description: 'Update Person'
+    name: ${self:custom.base}-${self:custom.brand}-updateOnePerson
+    handler: ./dist/person.updateOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/person.js
+        - ./dist/person.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/updateOnePerson
+          method: GET        
+  
+  findAllUser:
+    <<: *defaultPrivateFunction
+    description: 'GetAll Users'
+    name: ${self:custom.base}-${self:custom.brand}-findAllUser
+    handler: ./dist/user.findAll
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/user.js
+        - ./dist/user.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/findAllUser
+          method: GET 
+        
+  createOneUser:
+    <<: *defaultPrivateFunction
+    description: 'Create User'
+    name: ${self:custom.base}-${self:custom.brand}-createOneUser
+    handler: ./dist/user.createOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/user.js
+        - ./dist/user.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/createOneUser
+          method: GET  
+
+  deleteOneUser:
+    <<: *defaultPrivateFunction
+    description: 'Delete User'
+    name: ${self:custom.base}-${self:custom.brand}-deleteOneUser
+    handler: ./dist/user.deleteOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/user.js
+        - ./dist/user.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/deleteOneUser
+          method: GET
+
+  updateOneUser:
+    <<: *defaultPrivateFunction
+    description: 'Update User'
+    name: ${self:custom.base}-${self:custom.brand}-updateOneUser
+    handler: ./dist/user.updateOne
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/user.js
+        - ./dist/user.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/updateOneUser
+          method: GET
+          
+  authenticateUser:
+    <<: *defaultPrivateFunction
+    description: 'Authenticate User'
+    name: ${self:custom.base}-${self:custom.brand}-authenticateUser
+    handler: ./dist/auth.authenticate
+    package:
+      exclude: 
+        - ".*/**"
+        - node_modules/**
+      include:
+        - ./dist/auth.js
+        - ./dist/auth.js.map
+    events:
+      - http:
+          cors: true
+          path: /v1/authenticateUser
+          method: GET        
+    
